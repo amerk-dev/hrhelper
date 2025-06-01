@@ -19,4 +19,6 @@ urlpatterns = [
     path('employees/<int:pk>/delete/', views.EmployeeDeleteView.as_view(), name='employee-delete'),
 
     path('bonuses/calculate/', views.CalculateBonusView.as_view(), name='bonus-calculate'),
+path('reports/', views.ReportSelectionView.as_view(), name='report-selection'),
+path('reports/employees/csv/', views.EmployeeReportCSVView.as_view(), name='employee-report-csv'),
 ]

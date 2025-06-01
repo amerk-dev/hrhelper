@@ -1,8 +1,11 @@
+import csv
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib.messages.views import SuccessMessageMixin
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.urls import reverse_lazy
+from django.utils import timezone
 from django.views import View
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin # Для контроля доступа
@@ -260,3 +263,64 @@ class CalculateBonusView(LoginRequiredMixin, PermissionRequiredMixin, View):
             'bonus_results': bonus_results,
             'calculation_summary': calculation_summary
         })
+
+
+
+class ReportSelectionView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    template_name = 'hr_management/report_selection.html'
+    permission_required = ('hr_management.view_employee', 'hr_management.view_department') # Примерные права
+
+    def get(self, request, *args, **kwargs):
+        # Если бы были фильтры, здесь бы инициализировалась форма
+        # form = ReportFilterForm()
+        # return render(request, self.template_name, {'form': form})
+        return render(request, self.template_name)
+
+
+class EmployeeReportCSVView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    permission_required = 'hr_management.view_employee' # Пользователь должен иметь право просматривать сотрудников
+
+    def get(self, request, *args, **kwargs):
+        # Создаем HttpResponse с типом CSV
+        response = HttpResponse(
+            content_type='text/csv',
+            headers={'Content-Disposition': f'attachment; filename="employee_report_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'},
+        )
+        response.write(u'\ufeff'.encode('utf8')) # BOM для корректного отображения кириллицы в Excel
+
+        writer = csv.writer(response, delimiter=';') # Используем точку с запятой как разделитель
+
+        # Заголовки CSV файла
+        header = [
+            'ФИО', 'Возраст', 'Пол', 'Семейное положение',
+            'Подразделение', 'Должность', 'Разряд',
+            'Дата начала работы', 'Дата окончания работы'
+        ]
+        writer.writerow(header)
+
+        # Получаем данные сотрудников
+        # Для ТЗ нужны фильтры по дате, но начнем без них для простоты
+        # start_date_filter = request.GET.get('start_date')
+        # end_date_filter = request.GET.get('end_date')
+        # employees = Employee.objects.all()
+        # if start_date_filter:
+        #     employees = employees.filter(start_date__gte=start_date_filter)
+        # if end_date_filter:
+        #     employees = employees.filter(Q(end_date__lte=end_date_filter) | Q(end_date__isnull=True)) # немного сложнее логика с end_date
+
+        employees = Employee.objects.select_related('department').all()
+
+        for emp in employees:
+            writer.writerow([
+                emp.full_name,
+                emp.age, # @property
+                emp.get_gender_display(),
+                emp.get_marital_status_display(),
+                emp.department.name if emp.department else '-',
+                emp.position,
+                emp.grade if emp.grade is not None else '-',
+                emp.start_date.strftime('%d.%m.%Y') if emp.start_date else '-',
+                emp.end_date.strftime('%d.%m.%Y') if emp.end_date else 'Работает'
+            ])
+
+        return response

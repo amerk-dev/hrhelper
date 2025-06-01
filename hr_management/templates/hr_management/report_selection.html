@@ -1,0 +1,42 @@
+{% extends "hr_management/base.html" %}
+
+{% block title %}Формирование отчетов{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Формирование отчетов</h1>
+    <p>Выберите тип отчета для формирования.</p>
+    <hr>
+
+    <div class="list-group">
+        <a href="{% url 'hr_management:employee-report-csv' %}" class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+                <h5 class="mb-1">Отчет о кадрах</h5>
+                <small><i class="fas fa-file-csv"></i> Скачать CSV</small> {# Можно добавить иконку FontAwesome, если подключен #}
+            </div>
+            <p class="mb-1">Полный список сотрудников со всеми основными данными.</p>
+        </a>
+
+        {# Сюда можно будет добавить ссылки на другие отчеты #}
+        <!--
+        <a href="#" class="list-group-item list-group-item-action disabled" aria-disabled="true">
+            <h5 class="mb-1">Отчет о подразделениях (в разработке)</h5>
+            <p class="mb-1">Информация о подразделениях, включая штатное расписание.</p>
+        </a>
+
+        <a href="#" class="list-group-item list-group-item-action disabled" aria-disabled="true">
+            <h5 class="mb-1">Диаграмма: Сотрудники моложе 20 (в разработке)</h5>
+            <p class="mb-1">Визуализация данных по молодым сотрудникам.</p>
+        </a>
+        -->
+    </div>
+
+    {# Если бы были фильтры, форма была бы здесь:
+    <h3 class="mt-5">Фильтры для отчетов (если применимо)</h3>
+    <form method="get"> {# Или post, в зависимости от того, как обрабатывать #}
+        {# {{ filter_form.as_p }} #}
+        {# <button type="submit" class="btn btn-info">Применить фильтры (для будущих отчетов)</button> #}
+    {# </form> #}
+
+</div>
+{% endblock %}
