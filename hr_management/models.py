@@ -78,5 +78,4 @@ class Employee(models.Model):
         verbose_name = "Сотрудник (Кадр)"
         verbose_name_plural = "Сотрудники (Кадры)"
         ordering = ['full_name']
-        # Можно добавить уникальность, если ФИО+дата рождения должны быть уникальны
-        # unique_together = [['full_name', 'birth_date']]
+        unique_together = [['full_name', 'birth_date']]

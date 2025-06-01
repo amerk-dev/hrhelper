@@ -24,8 +24,7 @@
                         <a class="nav-link" href="{% url 'hr_management:department-list' %}">Подразделения</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'hr_management:employee-list' %}">Сотрудники</a>
-                    </li>
+                        <a class="nav-link {% if request.resolver_match.app_name == 'hr_management' and 'employee' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'hr_management:employee-list' %}">Сотрудники</a>                    </li>
                      <!-- Ссылки на отчеты и др. будут здесь -->
                     {% if user.is_authenticated %}
                         <li class="nav-item">
