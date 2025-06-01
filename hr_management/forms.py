@@ -1,4 +1,6 @@
 from django import forms
+from django.utils import timezone
+
 from .models import Department, Employee
 
 
@@ -84,3 +86,46 @@ class EmployeeForm(forms.ModelForm):
 
         # Если подразделения должны быть отфильтрованы или упорядочены особым образом
         self.fields['department'].queryset = Department.objects.order_by('name')
+
+
+class BonusCalculationForm(forms.Form):
+    # Выбор сотрудника или подразделения
+    employee = forms.ModelChoiceField(
+        queryset=Employee.objects.select_related('department').order_by('full_name'),
+        required=False,
+        label="Сотрудник (оставить пустым для всего подразделения)",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    department = forms.ModelChoiceField(
+        queryset=Department.objects.order_by('name'),
+        required=False,
+        label="Подразделение (если не выбран конкретный сотрудник)",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
+    current_year = timezone.now().year
+    period_year = forms.IntegerField(
+        label="Год периода",
+        initial=current_year,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': current_year - 5, 'max': current_year + 1})
+    )
+    period_month = forms.IntegerField(
+        label="Месяц периода",
+        initial=timezone.now().month,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12})
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        employee = cleaned_data.get('employee')
+        department = cleaned_data.get('department')
+
+        if not employee and not department:
+            raise forms.ValidationError("Необходимо выбрать сотрудника или подразделение.")
+        if employee and department:
+            # Можно либо дать приоритет сотруднику, либо выдать ошибку
+            self.add_error('department',
+                           "Если выбран сотрудник, подразделение выбирать не нужно (оно определится по сотруднику).")
+            # cleaned_data['department'] = None # Игнорируем подразделение, если выбран сотрудник
+
+        return cleaned_data

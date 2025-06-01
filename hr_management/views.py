@@ -1,13 +1,17 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.contrib.messages.views import SuccessMessageMixin
 from django.shortcuts import render
 from django.urls import reverse_lazy
+from django.views import View
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin # Для контроля доступа
 # PermissionRequiredMixin требует, чтобы у пользователя было определенное разрешение
 # Например: 'hr_management.add_department'
 
-from .models import Department, Employee
-from .forms import DepartmentForm, EmployeeForm
+from .models import Department, Employee, EmployeePerformance, BonusCalculationSettings
+from .forms import DepartmentForm, EmployeeForm, BonusCalculationForm
+
 
 # --- Department Views ---
 class DepartmentListView(LoginRequiredMixin, ListView):
@@ -124,3 +128,135 @@ class EmployeeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, SuccessMes
     #     obj_name = self.get_object().full_name
     #     messages.success(self.request, f"Сотрудник \"{obj_name}\" успешно удален.")
     #     return super().delete(request, *args, **kwargs)
+
+
+class CalculateBonusView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    template_name = 'hr_management/bonus_calculation.html'
+    form_class = BonusCalculationForm
+    permission_required = ('hr_management.view_employee', 'hr_management.view_kpi')  # Пример прав
+
+    def get(self, request, *args, **kwargs):
+        form = self.form_class()
+        return render(request, self.template_name, {'form': form})
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(request.POST)
+        bonus_results = []
+        total_calculated_bonus = Decimal('0.00')
+        calculation_summary = {}  # Для общей информации: бюджет, всего премий
+
+        if form.is_valid():
+            employee_param = form.cleaned_data.get('employee')
+            department_param = form.cleaned_data.get('department')
+            year = form.cleaned_data.get('period_year')
+            month = form.cleaned_data.get('period_month')
+
+            employees_to_calculate = Employee.objects.none()
+
+            if employee_param:
+                employees_to_calculate = Employee.objects.filter(pk=employee_param.pk)
+                target_department = employee_param.department
+            elif department_param:
+                employees_to_calculate = Employee.objects.filter(department=department_param)
+                target_department = department_param
+            else:  # Этого не должно быть из-за валидации формы, но на всякий случай
+                return render(request, self.template_name,
+                              {'form': form, 'error': 'Не выбран сотрудник или подразделение'})
+
+            # Получаем общий премиальный фонд, если он есть
+            bonus_settings = BonusCalculationSettings.objects.filter(
+                department=target_department if target_department else None,  # Если фонд общий, department=None
+                period_year=year,
+                period_month=month
+            ).first()
+
+            calculation_summary['bonus_pool'] = bonus_settings.total_bonus_pool if bonus_settings else None
+            calculation_summary['period'] = f"{month:02d}/{year}"
+            calculation_summary['target_entity'] = employee_param or target_department
+
+            for emp in employees_to_calculate.filter(tariff_rate__isnull=False):
+                if not emp.assigned_kpis.exists():  # <--- ПРОВЕРКА НАЗНАЧЕННЫХ KPI
+                    bonus_results.append({
+                        'employee_name': emp.full_name,
+                        'tariff_rate': emp.tariff_rate,
+                        'kpi_details': [],
+                        'integral_coefficient_c': Decimal('0.00'),
+                        'calculated_bonus': Decimal('0.00'),
+                        'error': 'Сотруднику не назначены KPI для оценки.'
+                    })
+                    continue
+
+                integral_coefficient_c = Decimal('0.00')
+                kpi_details_for_template = []
+                all_assigned_kpis_have_performance = True  # Флаг для проверки
+
+                for assigned_kpi_obj in emp.assigned_kpis.all():  # <--- ИТЕРИРУЕМСЯ ПО НАЗНАЧЕННЫМ KPI
+                    performance = EmployeePerformance.objects.filter(
+                        employee=emp,
+                        kpi=assigned_kpi_obj,  # <--- ИЩЕМ ДАННЫЕ ДЛЯ КОНКРЕТНОГО НАЗНАЧЕННОГО KPI
+                        period_year=year,
+                        period_month=month
+                    ).first()  # Ожидаем одну запись или None
+
+                    achievement_percentage_decimal = Decimal('0.00')
+                    actual_val_for_tpl = None
+                    planned_val_for_tpl = None
+
+                    if performance:
+                        actual_val_for_tpl = performance.actual_value
+                        planned_val_for_tpl = performance.planned_value
+                        if performance.planned_value and performance.planned_value != Decimal('0'):
+                            achievement_percentage_decimal = (performance.actual_value / performance.planned_value)
+                        # Если planned_value = 0, а actual_value > 0, это может быть 100% или специальная логика
+                        elif performance.planned_value == Decimal('0') and performance.actual_value > Decimal('0'):
+                            achievement_percentage_decimal = Decimal('1.0')  # Например, если план 0, а факт есть - 100%
+                    else:
+                        # Если для назначенного KPI нет записи о выполнении
+                        all_assigned_kpis_have_performance = False  # Отмечаем, что не все данные есть
+                        # achievement_percentage_decimal остается 0.00
+                        # Можно здесь добавить сообщение в kpi_details_for_template, что нет данных
+
+                    # Ограничение: например, не более 200% (2.0)
+                    achievement_percentage_decimal = min(achievement_percentage_decimal, Decimal('2.0'))
+
+                    weighted_achievement = achievement_percentage_decimal * assigned_kpi_obj.weight  # Используем вес из объекта KPI
+                    integral_coefficient_c += weighted_achievement
+
+                    kpi_details_for_template.append({
+                        'name': assigned_kpi_obj.name,
+                        'weight': assigned_kpi_obj.weight,
+                        'planned': planned_val_for_tpl,
+                        'actual': actual_val_for_tpl,
+                        'achievement_percent': achievement_percentage_decimal * 100,
+                        'weighted_achievement_points': weighted_achievement,
+                        'has_data': bool(performance)  # Флаг, были ли данные по этому KPI
+                    })
+
+                integral_coefficient_c = integral_coefficient_c.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+                calculated_bonus = (emp.tariff_rate * integral_coefficient_c).quantize(Decimal('0.01'),
+                                                                                       rounding=ROUND_HALF_UP)
+
+                employee_result = {
+                    'employee_name': emp.full_name,
+                    'tariff_rate': emp.tariff_rate,
+                    'kpi_details': kpi_details_for_template,
+                    'integral_coefficient_c': integral_coefficient_c,
+                    'calculated_bonus': calculated_bonus,
+                }
+                if not all_assigned_kpis_have_performance:
+                    employee_result[
+                        'warning'] = 'Не для всех назначенных KPI найдены данные о выполнении за период. Расчет произведен по имеющимся данным (отсутствующие KPI считаются выполненными на 0%).'
+
+                bonus_results.append(employee_result)
+                total_calculated_bonus += calculated_bonus
+
+            calculation_summary['total_calculated_bonus'] = total_calculated_bonus
+            if calculation_summary['bonus_pool'] is not None:
+                calculation_summary['pool_vs_calculated_diff'] = calculation_summary[
+                                                                     'bonus_pool'] - total_calculated_bonus
+
+        return render(request, self.template_name, {
+            'form': form,
+            'bonus_results': bonus_results,
+            'calculation_summary': calculation_summary
+        })
