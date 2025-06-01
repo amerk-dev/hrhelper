@@ -1,0 +1,56 @@
+{% extends "hr_management/base.html" %}
+
+{% block title %}Список подразделений{% endblock %}
+
+{% block content %}
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1>Список подразделений</h1>
+            {% if perms.hr_management.add_department %} {# Проверка прав на добавление #}
+                <a href="{% url 'hr_management:department-add' %}" class="btn btn-primary">Добавить подразделение</a>
+            {% endif %}
+        </div>
+
+        {% if departments %}
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Название</th>
+                        <th>Краткое название</th>
+                        <th>Шифр</th>
+                        <th>Штатные единицы</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for department in departments %}
+                        <tr>
+                            <td><a href="{% url 'hr_management:department-detail' department.pk %}">{{ department.name }}</a></td>
+                            <td>{{ department.short_name|default:"-" }}</td>
+                            <td>{{ department.code|default:"-" }}</td>
+                            <td>{{ department.allocated_units }}</td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="{% url 'hr_management:department-detail' department.pk %}" class="btn btn-sm btn-info">Просмотр</a>
+                                    {% if perms.hr_management.change_department %} {# Проверка прав на изменение #}
+                                        <a href="{% url 'hr_management:department-edit' department.pk %}" class="btn btn-sm btn-warning">Изменить</a>
+                                    {% endif %}
+                                    {% if perms.hr_management.delete_department %} {# Проверка прав на удаление #}
+                                        <a href="{% url 'hr_management:department-delete' department.pk %}" class="btn btn-sm btn-danger">Удалить</a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="alert alert-info" role="alert">
+                Подразделений пока нет.
+                {% if perms.hr_management.add_department %}
+                    <a href="{% url 'hr_management:department-add' %}" class="alert-link">Добавить первое подразделение?</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
