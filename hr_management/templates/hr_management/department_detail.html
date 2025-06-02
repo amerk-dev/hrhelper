@@ -30,6 +30,7 @@
             </div>
             <div class="card-footer text-muted">
                 {% if perms.hr_management.change_department %} {# Проверка прав на изменение #}
+
                     <a href="{% url 'hr_management:department-edit' department.pk %}" class="btn btn-warning">Изменить</a>
                 {% endif %}
                 {% if perms.hr_management.delete_department %} {# Проверка прав на удаление #}
